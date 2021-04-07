@@ -25,7 +25,7 @@ links = re.findall('<a href="(.*?)"  target="_blank" class="dl-pic"><img src="(.
 
 
 
-def getImgs(threadName,url):
+def getImgs(threadName,url,lock):
     #爬取title用于创建文件目录
     page = requests.get(url, headers=headers)
     page_info = page.text
@@ -40,10 +40,6 @@ def getImgs(threadName,url):
     #获取当前页数
     now = re.findall('\((.*?)/',num)
 
-    # 获取下一页的链接
-    # <a href="https://www.2meinv.com/article-1628-21.html">下一页</a>
-    next = re.findall('<a href="(.*?)">下一页</a>',page_info)
-    new_url = next[0]
 
     # < title > 元气性感少女苏菲菲超短裙尽显蜜桃熟时_爱美女 < / title >
     title = re.findall('<title>(.*?)</title>',page_info)
@@ -55,7 +51,7 @@ def getImgs(threadName,url):
     photo = requests.get(img, headers=headers)
     photo = photo.content
     # print(img)
-    dirs = './'+search+'/' + str(dir) + '/'
+    dirs = './'+search+'/'
 
 
     #创建目录
@@ -64,26 +60,43 @@ def getImgs(threadName,url):
 
     #判断图片是否爬取
     #下载当前页的图片
-    if not os.path.exists(dirs + now[0] + '.jpg'):
-        with open(dirs + now[0] + '.jpg', 'wb') as f:
+    if not os.path.exists(dirs + str(time.time()) + '.jpg'):
+        with open(dirs + str(time.time()) + '.jpg', 'wb') as f:
             f.write(photo)
-            print ('爬取'+dirs+'第'+now[0]+'/'+all[0])
+            print ('爬取'+threadName+"--"+dirs+'第'+now[0]+'/'+all[0])
             f.close()
-        #将下一页的链接传入当前函数下载下一页的图片
-        try:
-            getImgs(threadName,new_url)
-        except:
-            print('服务器异常；可能已经爬取完毕')
-            getImgs(threadName, new_url)
-    else:
-        print('线程:'+threadName+"爬取完成")
+        if now[0]==all[0]:
+             print('爬取完毕')
+             lock.release()
+        else:
+            # 获取下一页的链接
+            # <a href="https://www.2meinv.com/article-1628-21.html">下一页</a>
+            next = re.findall('<a href="(.*?)">下一页</a>',page_info)
+            new_url = next[0]
+            
+            #将下一页的链接传入当前函数下载下一页的图片
+            try:
+                getImgs(threadName,new_url,lock)
+            except:
+                    print(threadName+"--"+now[0]+"---"+all[0])
+                    print("服务器异常，正在重试")
+                    getImgs(threadName,url,lockl)
 
-
+    
 
 i = 0
+locks=[]
 for link in links:
+    lock = _thread.allocate_lock()   #创建锁对象
+    lock.acquire()
+    locks.append(lock)
     i+=1
     url = link[0]
-    _thread.start_new_thread(getImgs, ('thread-'+str(i),url))
+    _thread.start_new_thread(getImgs, ('thread-'+str(i),url,lock))
     print('创建线程:thread'+str(i))
-
+    print(lock)
+for j in range(i):
+    while locks[j].locked():
+        time.sleep(1)
+        
+print('所有资源爬取完毕')
